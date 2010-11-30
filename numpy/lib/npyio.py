@@ -680,7 +680,6 @@ def loadtxt(fname, dtype=float, comments='#', delimiter=None,
         fh = fname
     else:
         raise ValueError('fname must be a string or file handle')
-    X = []
 
     def flatten_dtype(dt):
         """Unpack a structured data-type."""
@@ -714,14 +713,22 @@ def loadtxt(fname, dtype=float, comments='#', delimiter=None,
         for i in xrange(skiprows):
             fh.readline()
 
-        # Read until we find a line with some values, and use
-        # it to estimate the number of columns, N.
-        first_vals = None
-        while not first_vals:
-            first_line = fh.readline()
-            if not first_line: # EOF reached
+        # Read until we find a line with some values, and use it to
+        # estimate the number of columns N. Then continue until end of
+        # file to estimate the number of rows M.
+        offset = fh.tell()
+        M = 0
+        for line in fh:
+            if not line:
                 raise IOError('End-of-file reached before encountering data.')
-            first_vals = split_line(first_line)
+            first_vals = split_line(line)
+            M = M + 1
+            if first_vals: break
+        for line in fh:
+            # continue till end of file
+            M += 1
+        fh.seek(offset)
+
         N = len(usecols or first_vals)
 
         dtype_types = flatten_dtype(dtype)
@@ -743,8 +750,10 @@ def loadtxt(fname, dtype=float, comments='#', delimiter=None,
                     continue
             converters[i] = conv
 
+        X = np.empty((M, N), dtype=dtype)
+
         # Parse each line, including the first
-        for i, line in enumerate(itertools.chain([first_line], fh)):
+        for i, line in enumerate(fh):
             vals = split_line(line)
             if len(vals) == 0:
                 continue
@@ -753,7 +762,7 @@ def loadtxt(fname, dtype=float, comments='#', delimiter=None,
                 vals = [vals[i] for i in usecols]
 
             # Convert each value according to its column and store
-            X.append(tuple([conv(val) for (conv, val) in zip(converters, vals)]))
+            X[i] = [conv(val) for (conv, val) in zip(converters, vals)]
     finally:
         if own_fh:
             fh.close()
